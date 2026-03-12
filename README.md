@@ -1,73 +1,122 @@
-# React + TypeScript + Vite
+# E-Card — Multiplayer (Supabase + Vite + React + TSX)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A real-time 1v1 multiplayer implementation of E-Card from the anime _Kaiji_, using Supabase Realtime Broadcast for WebSocket communication and Vite + React + TypeScript for the frontend.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Project Structure
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+  types.ts          — all shared TypeScript types
+  gameLogic.ts      — pure game logic (resolveRound, card helpers, constants)
+  supabaseClient.ts — Supabase singleton client
+  useGame.ts        — all multiplayer state + Supabase channel logic
+  components.tsx    — reusable UI card/button components
+  App.tsx           — screens and layout
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Local Setup
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. Scaffold a Vite project (if starting fresh)
+
+```bash
+npm create vite@latest ecard-game -- --template react-ts
+cd ecard-game
 ```
+
+### 2. Install dependencies
+
+```bash
+npm install
+npm install @supabase/supabase-js
+```
+
+### 3. Copy source files
+
+Replace the contents of `src/` with all the `.ts` / `.tsx` files from this project.
+
+### 4. Set up Supabase
+
+1. Go to [supabase.com](https://supabase.com) and create a free account
+2. Click **New Project**, give it a name, set a password, pick a region
+3. Wait ~2 minutes for provisioning
+4. Go to **Project Settings → API**
+5. Copy:
+   - **Project URL** → `VITE_SUPABASE_URL`
+   - **anon public** key → `VITE_SUPABASE_ANON_KEY`
+
+> No database tables or SQL needed. E-Card uses only Supabase **Realtime Broadcast** (ephemeral messages), so there's nothing to configure in the database.
+
+### 5. Create your .env file
+
+```bash
+cp .env.example .env
+```
+
+Fill in the two values:
+
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+### 6. Run locally
+
+```bash
+npm run dev
+```
+
+Open two browser tabs at `http://localhost:5173`.
+
+- Tab 1: click **Create Room**, copy the 6-letter room code
+- Tab 2: paste the code and click **Join**
+
+---
+
+## Deploy to Vercel
+
+```bash
+npm run build       # produces dist/
+```
+
+Then:
+
+1. Push your project to GitHub
+2. Go to [vercel.com](https://vercel.com) → **New Project** → import your repo
+3. Under **Environment Variables**, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+4. Click **Deploy**
+
+---
+
+## How the Multiplayer Works
+
+- No backend server. All real-time communication goes through **Supabase Realtime Broadcast**.
+- When Player 1 creates a room, a Supabase channel is opened at `ecard:{roomId}`.
+- Player 2 joins by entering the room code — they subscribe to the same channel and broadcast `guest_joined`.
+- The **host drives game state**. After each card play or round resolution, the host broadcasts the full `RoomState` to the guest.
+- Card plays are broadcast immediately so both sides can resolve the round locally without waiting for a round-trip.
+- Sides swap every 3 rounds. Hands reset on swap.
+
+---
+
+## Game Rules
+
+Each player has 5 cards:
+
+- **Emperor side**: 1 Emperor + 4 Citizens
+- **Slave side**: 1 Slave + 4 Citizens
+
+Resolution:
+| Emperor plays | Slave plays | Winner |
+|---|---|---|
+| Emperor | Citizen | Emperor side |
+| Citizen | Slave | Emperor side |
+| Emperor | Slave | **Slave side** |
+| Citizen | Citizen | Draw |
+
+The Slave card is the only card that can kill the Emperor — the key psychological tension of the game.
+
+12 rounds total. Most round wins takes the match.
